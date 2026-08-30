@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "limpet"
+version = "0.1.0"
+description = "Mirror a terminal session that is already running, over an authenticated WebSocket."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Yuri Barreira" }]
+keywords = ["terminal", "iterm2", "websocket", "mirror", "remote", "macos", "daemon"]
+dependencies = ["iterm2>=2.20", "websockets>=12"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Terminals :: Terminal Emulators/X Terminals",
+]
+
+[project.urls]
+Homepage = "https://github.com/yuri-rod/limpet"
+Repository = "https://github.com/yuri-rod/limpet"
+Issues = "https://github.com/yuri-rod/limpet/issues"
+Security = "https://github.com/yuri-rod/limpet/blob/main/SECURITY.md"
+
+[project.scripts]
+limpet = "limpet.main:run"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 96
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "S", "UP", "B"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
+[tool.ruff.lint.per-file-ignores]
+# S101: assert e o que um teste faz. S105: token de mentira.
+# E402: test_frames.py importa por secao, de proposito.
+"tests/*" = ["S101", "S105", "E402"]

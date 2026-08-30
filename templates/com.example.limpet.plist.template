@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.limpet</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>PYTHON</string>
+    <string>-m</string>
+    <string>limpet.main</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- Dying on a broken iTerm2 link IS the reconnect strategy, so a non-zero
+       exit must bring the daemon back. Never a bare <true/> here: that also
+       restarts a process that died on a bad config, in a tight loop. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/limpet.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/limpet.log</string>
+</dict>
+</plist>
