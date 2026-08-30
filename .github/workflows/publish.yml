@@ -1,0 +1,24 @@
+name: publish
+
+# Trusted Publishing: o PyPI confia neste workflow via OIDC, entao nao existe
+# token guardado em secret nenhum. Exige um "pending publisher" cadastrado uma
+# vez no PyPI antes da primeira publicacao.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install build
+      - run: python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
