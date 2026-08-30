@@ -60,8 +60,10 @@ before you decide this is the right tool.
 ## Install
 
 ```
-pip install limpet
+pip install git+https://github.com/yuri-rod/limpet
 ```
+
+Not on PyPI yet, so install from the repository or from a release tarball.
 
 Then write `~/.config/limpet/config.json`:
 
