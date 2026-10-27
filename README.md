@@ -125,4 +125,5 @@ supported WebSocket version on Python 3.10.
 Bug reports should include a reproducible example without private terminal
 contents. Include a regression test when changing protocol or recovery behavior.
 
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 Limpet is independent of the iTerm2 project. Licensed under [MIT](LICENSE).

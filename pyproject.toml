@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "limpet"
-version = "0.1.0"
+version = "0.1.1"
 description = "Mirror a terminal session that is already running, over an authenticated WebSocket."
 readme = "README.md"
 requires-python = ">=3.10"
