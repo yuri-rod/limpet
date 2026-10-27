@@ -4,6 +4,7 @@ import logging
 
 import pytest
 import websockets
+from websockets.asyncio.client import connect
 
 from limpet.server import BridgeServer
 
@@ -62,21 +63,21 @@ async def _hello(ws):
 async def test_rejects_bad_token(srv):
     _, _, url = srv
     with pytest.raises(websockets.exceptions.InvalidStatus) as e:
-        await websockets.connect(url, additional_headers=_headers("wrong"))
+        await connect(url, additional_headers=_headers("wrong"))
     assert e.value.response.status_code == 401
 
 
 async def test_rejects_non_ascii_token_with_401_not_500(srv):
     _, _, url = srv
     with pytest.raises(websockets.exceptions.InvalidStatus) as e:
-        await websockets.connect(url, additional_headers=_headers("wrongéè"))
+        await connect(url, additional_headers=_headers("wrongéè"))
     assert e.value.response.status_code == 401
 
 
 async def test_hello_and_cached_sessions_on_connect(srv):
     s, _, url = srv
     await s.publish_sessions([{"id": "S1"}])
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
         msg = json.loads(await ws.recv())
         assert msg["type"] == "sessions" and msg["list"] == [{"id": "S1"}]
@@ -84,7 +85,7 @@ async def test_hello_and_cached_sessions_on_connect(srv):
 
 async def test_subscribe_input_unsubscribe_flow(srv):
     s, spy, url = srv
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
         await ws.send('{"type":"subscribe","session":"S1"}')
         await ws.send('{"type":"input","session":"S1","text":"ls\\n"}')
@@ -106,11 +107,54 @@ async def test_subscribe_input_unsubscribe_flow(srv):
 
 async def test_garbage_gets_error_not_crash(srv):
     _, _, url = srv
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
         await ws.send("garbage")
         msg = json.loads(await ws.recv())
         assert msg["type"] == "error"
+
+
+@pytest.mark.parametrize("raw", ['{"type":[]}', b"\xff"])
+async def test_malformed_message_keeps_connection_usable(srv, raw):
+    _, _, url = srv
+    async with connect(url, additional_headers=_headers()) as ws:
+        await _hello(ws)
+        await ws.send(raw)
+        assert json.loads(await ws.recv())["type"] == "error"
+        await ws.send('{"type":"ping"}')
+        assert json.loads(await ws.recv())["type"] == "pong"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"type": "input", "session": "S1", "text": "synthetic input"},
+        {"type": "resize", "session": "S1", "cols": 80, "rows": 24},
+    ],
+)
+async def test_session_writes_require_the_sending_clients_subscription(srv, message):
+    _, spy, url = srv
+    async with (
+        connect(url, additional_headers=_headers()) as owner,
+        connect(url, additional_headers=_headers()) as other,
+    ):
+        await _hello(owner)
+        await _hello(other)
+        await owner.send('{"type":"subscribe","session":"S1"}')
+        await owner.send('{"type":"ping"}')
+        assert json.loads(await owner.recv())["type"] == "pong"
+        await other.send(json.dumps(message))
+        await other.send('{"type":"ping"}')
+        assert json.loads(await other.recv())["type"] == "error"
+        assert json.loads(await other.recv())["type"] == "pong"
+        assert spy.inputs == [] and spy.resizes == []
+
+        await owner.send('{"type":"unsubscribe","session":"S1"}')
+        await owner.send(json.dumps(message))
+        await owner.send('{"type":"ping"}')
+        assert json.loads(await owner.recv())["type"] == "error"
+        assert json.loads(await owner.recv())["type"] == "pong"
+        assert spy.inputs == [] and spy.resizes == []
 
 
 class DeadSocket:
@@ -130,7 +174,7 @@ async def test_dead_subscriber_purged_on_publish_failure(srv):
 
 async def test_publish_gone_purges_subs_and_resubscribe_fires_again(srv):
     s, spy, url = srv
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
         await ws.send('{"type":"subscribe","session":"S1"}')
         for _ in range(50):
@@ -174,10 +218,9 @@ async def test_on_input_exception_does_not_disconnect(caplog):
     )
     port = await s.start("127.0.0.1", 0)
     try:
-        async with websockets.connect(
-            f"ws://127.0.0.1:{port}", additional_headers=_headers()
-        ) as ws:
+        async with connect(f"ws://127.0.0.1:{port}", additional_headers=_headers()) as ws:
             await _hello(ws)
+            await ws.send('{"type":"subscribe","session":"S1"}')
             with caplog.at_level(logging.ERROR, logger="limpet.server"):
                 await ws.send('{"type":"input","session":"S1","text":"ls\\n"}')
                 await ws.send('{"type":"ping"}')
@@ -190,7 +233,7 @@ async def test_on_input_exception_does_not_disconnect(caplog):
 
 async def test_no_sessions_frame_before_the_first_enumeration(srv):
     _, _, url = srv
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
         await ws.send('{"type":"ping"}')
         # a "sessions": [] here would blank the phone's list on every restart
@@ -200,7 +243,7 @@ async def test_no_sessions_frame_before_the_first_enumeration(srv):
 async def test_empty_enumeration_is_still_published(srv):
     s, _, url = srv
     await s.publish_sessions([])
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
         msg = json.loads(await ws.recv())
         assert msg["type"] == "sessions" and msg["list"] == []
@@ -209,8 +252,8 @@ async def test_empty_enumeration_is_still_published(srv):
 async def test_second_subscriber_fires_on_subscribe_again(srv):
     s, spy, url = srv
     async with (
-        websockets.connect(url, additional_headers=_headers()) as a,
-        websockets.connect(url, additional_headers=_headers()) as b,
+        connect(url, additional_headers=_headers()) as a,
+        connect(url, additional_headers=_headers()) as b,
     ):
         await _hello(a)
         await _hello(b)
@@ -227,8 +270,9 @@ async def test_second_subscriber_fires_on_subscribe_again(srv):
 
 async def test_resize_reaches_the_manager(srv):
     _, spy, url = srv
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
+        await ws.send('{"type":"subscribe","session":"S1"}')
         await ws.send('{"type":"resize","session":"S1","cols":80,"rows":24}')
         for _ in range(50):
             if spy.resizes:
@@ -239,7 +283,7 @@ async def test_resize_reaches_the_manager(srv):
 
 async def test_new_tab_replies_with_the_created_session(srv):
     _, spy, url = srv
-    async with websockets.connect(url, additional_headers=_headers()) as ws:
+    async with connect(url, additional_headers=_headers()) as ws:
         await _hello(ws)
         await ws.send('{"type":"new_tab"}')
         assert json.loads(await ws.recv()) == {"type": "tab_created", "session": "NEW"}
@@ -256,9 +300,7 @@ async def test_failed_new_tab_stays_quiet_and_keeps_the_socket(caplog):
     )
     port = await s.start("127.0.0.1", 0)
     try:
-        async with websockets.connect(
-            f"ws://127.0.0.1:{port}", additional_headers=_headers()
-        ) as ws:
+        async with connect(f"ws://127.0.0.1:{port}", additional_headers=_headers()) as ws:
             await _hello(ws)
             with caplog.at_level(logging.ERROR, logger="limpet.server"):
                 await ws.send('{"type":"new_tab"}')

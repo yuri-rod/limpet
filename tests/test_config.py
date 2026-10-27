@@ -9,12 +9,24 @@ from limpet import config
 
 
 # noqa S104: o teste existe justamente para provar que estes hosts sao recusados
-@pytest.mark.parametrize("host", ["", "0.0.0.0", "::"])  # noqa: S104
+@pytest.mark.parametrize(
+    "host",
+    ["", "0.0.0.0", "::", "0:0:0:0:0:0:0:0", "::0", "0", "0x0"],  # noqa: S104
+)
 def test_load_rejects_all_interfaces_hosts(tmp_path, monkeypatch, host):
     monkeypatch.setenv("LIMPET_CONFIG_DIR", str(tmp_path))
     (tmp_path / "config.json").write_text(json.dumps({"host": host}))
     with pytest.raises(config.ConfigError, match=str(tmp_path / "config.json")):
         config.load()
+
+
+@pytest.mark.parametrize("host", [None, [], {}, 123, "   "])
+def test_load_rejects_invalid_host_before_creating_token(tmp_path, monkeypatch, host):
+    monkeypatch.setenv("LIMPET_CONFIG_DIR", str(tmp_path))
+    (tmp_path / "config.json").write_text(json.dumps({"host": host}))
+    with pytest.raises(config.ConfigError, match="host"):
+        config.load()
+    assert not (tmp_path / "token").exists()
 
 
 def test_ensure_token_creates_0600_and_is_stable(tmp_path):

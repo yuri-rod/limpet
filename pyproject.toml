@@ -12,7 +12,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Yuri Barreira" }]
 keywords = ["terminal", "iterm2", "websocket", "mirror", "remote", "macos", "daemon"]
-dependencies = ["iterm2>=2.20", "websockets>=12"]
+dependencies = ["iterm2>=2.20", "websockets>=13.1"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",

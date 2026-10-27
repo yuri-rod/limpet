@@ -46,9 +46,13 @@ _CLIENT_FIELDS = {
 def parse(text):
     try:
         msg = json.loads(text)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
         raise ProtocolError(f"bad json: {e}") from e
-    if not isinstance(msg, dict) or msg.get("type") not in _CLIENT_FIELDS:
+    if (
+        not isinstance(msg, dict)
+        or not isinstance(msg.get("type"), str)
+        or msg["type"] not in _CLIENT_FIELDS
+    ):
         raise ProtocolError(f"unknown message type: {msg!r:.80}")
     for field, kind in _CLIENT_FIELDS[msg["type"]]:
         value = msg.get(field)

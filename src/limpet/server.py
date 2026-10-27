@@ -74,6 +74,11 @@ class BridgeServer:
 
     async def _dispatch(self, ws, msg):
         t = msg["type"]
+        if t in {"input", "resize"} and ws not in self._subs.get(msg["session"], ()):
+            await ws.send(
+                json.dumps({"type": "error", "msg": "subscribe to the session first"})
+            )
+            return
         if t == "subscribe":
             sid = msg["session"]
             self._subs[sid].add(ws)

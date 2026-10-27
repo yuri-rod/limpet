@@ -1,68 +1,46 @@
 # Security
 
-Be blunt about what this is: **limpet hands a live shell to whoever holds the
-token.** Keystrokes go straight into a real terminal session running as you, on
-your machine. Treat the token like an SSH private key, and read this page before
-you make it reachable from anywhere.
+A Limpet token gives access to live terminal contents and command input as the
+user running the bridge. There is no sandbox, command filtering, read-only
+credential or per-session access policy.
 
-## What actually protects it
+## Authentication and transport
 
-One bearer token. `secrets.token_hex(32)` — 256 bits — written to
-`~/.config/limpet/token` at mode `0600` on first run, and sent by the client as
-`Authorization: Bearer <token>`. Without it the WebSocket handshake is rejected.
+The first run creates a random 256-bit bearer token in
+`~/.config/limpet/token` with mode `0600`. Clients send it in the
+`Authorization` header. Missing or incorrect credentials receive HTTP 401
+before the WebSocket connection is accepted.
 
-There is no user model, no session expiry, no revocation list, and no second
-factor. The token is compared against the expected value on every connection.
-Rotating it means deleting the file and restarting; every existing client then
-has to be reconfigured.
+The token has no expiry or per-client revocation. To rotate it, stop the bridge,
+remove the token file, restart and update clients with the new token. Stopping
+the bridge closes existing connections; editing the token file alone does not
+revoke them.
 
-If you want revocable, named, or read-only credentials, limpet does not have
-them. That is a real gap, and for some deployments it is disqualifying.
+Limpet serves plain `ws://`. Use loopback (`127.0.0.1`, or `--dev`) or an
+encrypted private network such as Tailscale or WireGuard. Public tunnels are
+unsupported. A proxy can see both the token and terminal traffic.
 
-## The transport is plain WebSocket
+Configuration rejects empty hosts and unspecified IP literals, including
+expanded IPv6 and alternate numeric IPv4 forms. Use an explicit interface IP;
+hostnames depend on your resolver and may change which interface is selected.
 
-`ws://`, not `wss://`. There is no TLS in limpet and none is planned, because
-adding half-configured TLS is worse than being clear that there is none.
+## Terminal contents and input
 
-This means **the network path has to be the thing you trust.** Two supported
-shapes:
+Subscribers receive the full visible grid, including any credentials or private
+data displayed there. Limpet does not redact sensitive text. Visible-grid-only
+mirroring is not an access control: a client can send commands that display
+other files or history.
 
-- **Loopback only.** `limpet --dev`, or `"host": "127.0.0.1"`. Nothing leaves
-  the machine.
-- **A private overlay network.** A Tailscale or WireGuard address, where the
-  transport is already encrypted and authenticated below limpet.
+Input and resize messages require that the sending client is subscribed to the
+target session. This keeps mutations tied to the subscription lifecycle so
+resize restoration can run when the last subscriber leaves. Any token holder
+can subscribe to any available session or request a new tab.
 
-`config.py` refuses `0.0.0.0`, `::`, and an empty host outright, with an error
-that names the problem. That check exists so a copy-pasted config cannot quietly
-put an unencrypted remote shell on every interface of your machine. Do not work
-around it.
-
-Putting limpet behind a public tunnel is out of scope and unsupported. If you do
-it anyway, you are publishing an unencrypted shell whose only guard is a string
-in a query-free header, and any proxy in the path sees both.
-
-## What the mirror publishes
-
-Every subscriber sees the full visible content of the session it subscribed to,
-as rendered text with colour. Whatever is on that screen — a token you just
-echoed, a connection string, a client's data — goes over the wire. limpet does
-not, and cannot, know what is sensitive.
-
-It sends only the visible grid, not scrollback, which limits exposure to what is
-on screen at that moment. That is a side effect of the design, not a security
-feature. Do not rely on it.
-
-## The write path
-
-`input` frames become `async_send_text` calls into the real session. There is no
-sandbox and no command filtering — that is the point of the tool, and it is also
-the whole risk. Anything that can authenticate can run anything you can run.
-
-The one constraint worth naming: keystrokes go to the session the client
-subscribed to, and session ids are ephemeral, re-keyed whenever iTerm2 restarts.
-A stale id fails rather than landing in a different session.
+Invalid JSON and invalid message fields receive a protocol error. WebSocket
+messages use the library's default 1 MiB receive limit. There is no per-client
+rate limit. Use only trusted clients.
 
 ## Reporting
 
-Open a GitHub issue for anything non-sensitive. For a vulnerability that should
-not be public, use GitHub's private security advisory form on this repository.
+Open a GitHub issue for non-sensitive problems. For a vulnerability that should
+remain private, use the repository's private security advisory form.

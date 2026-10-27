@@ -1,0 +1,3 @@
+include SECURITY.md
+include examples/local_demo.py
+include templates/com.example.limpet.plist.template

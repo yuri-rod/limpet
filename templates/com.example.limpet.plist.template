@@ -13,9 +13,8 @@
   </array>
   <key>RunAtLoad</key>
   <true/>
-  <!-- Dying on a broken iTerm2 link IS the reconnect strategy, so a non-zero
-       exit must bring the daemon back. Never a bare <true/> here: that also
-       restarts a process that died on a bad config, in a tight loop. -->
+  <!-- Retry failed connections and invalid configurations every 10 seconds.
+       Fix and test configuration in the foreground before loading this agent. -->
   <key>KeepAlive</key>
   <dict>
     <key>SuccessfulExit</key>

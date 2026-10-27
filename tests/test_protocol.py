@@ -62,6 +62,9 @@ def test_parse_accepts_resize_and_new_tab():
     "bad",
     [
         "not json",
+        b"\xff",
+        '{"type":[]}',
+        '{"type":{}}',
         '{"type":"nope"}',
         '{"type":"subscribe"}',
         '{"type":"input","session":"S1"}',

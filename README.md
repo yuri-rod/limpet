@@ -1,121 +1,128 @@
 # limpet
 
-Mirror a terminal session that is **already running**.
+Mirror an existing iTerm2 session over an authenticated WebSocket, with screen
+updates, keyboard input and resizing.
 
-A limpet clamps onto a hull that is already at sea. This one clamps onto an
-iTerm2 session you opened hours ago, never prepared in any way, and streams it
-to whatever client you point at it — over an authenticated WebSocket, with
-keystrokes going back the other way.
+Limpet lets a terminal client attach to a session already open on your Mac. It
+reads iTerm2's visible grid, converts changed rows to ANSI, and sends input back
+to the selected session. It is a Python bridge for client developers and people
+accessing their own terminals. A terminal UI is not included.
 
-That is the whole pitch, and it is the one thing the alternatives cannot do.
-`ttyd`, `gotty`, Zellij's web client and every tmux-based sharing trick can only
-serve a session **they** created, or one you remembered to start inside a
-multiplexer. limpet needs neither. The session is already there; it attaches.
+## Try the protocol locally
 
-Zero runtime dependencies beyond the iTerm2 Python API and `websockets`.
-About 1200 lines with 76 tests.
+Python 3.10 or later is required. This example starts a temporary loopback
+server, authenticates a client and exchanges synthetic screen and input frames.
+It does not connect to iTerm2 or execute shell input.
 
-```
-  iTerm2 session (already running)
-        |
-        |  ScreenStreamer, style=True
-        v
-  limpet  ── diffs frames, synthesises ANSI ──┐
-        ^                                     │
-        |  async_send_text                    │  authenticated WebSocket
-        |                                     v
-        └───────────────────────────── your client
+```sh
+git clone https://github.com/yuri-rod/limpet.git
+cd limpet
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[dev]'
+python examples/local_demo.py
 ```
 
-## What you get
+Expected output:
 
-- **Live mirror of a running session**, full colour, as synthesised ANSI (SGR,
-  CUP, ED, EL). The remote grid is authoritative; a client can be a dumb renderer.
-- **Keystrokes back**, via `async_send_text` with broadcast suppressed.
-- **Resize**, so the source session can be fitted to a phone-sized grid. The
-  original geometry is stashed and restored on unsubscribe.
-- **Remote new tab**, answered with the created session id.
-- **A versioned wire protocol.** The `hello` frame carries `proto`, and a client
-  is expected to refuse a version it does not speak.
-
-## Honest limits
-
-These are consequences of the approach, not bugs waiting for a fix. Read them
-before you decide this is the right tool.
-
-- **No scrollback.** limpet sends the visible grid, nothing above it. iTerm2's
-  Python API reports `number_of_lines_above_screen` as always `0`
-  ([iTerm2#8245](https://github.com/gnachman/iTerm2/issues/8245)), so the history
-  is not reachable from this side at all.
-- **No history for full-screen programs, ever.** `vim`, `htop`, `less`, and TUI
-  agents hold the alternate screen, which has no scrollback in any terminal or
-  multiplexer. If you need to read back through such a session, mirroring the
-  terminal is the wrong mechanism — read that program's own transcript instead.
-- **One mirror at a time**, by design. A second subscriber to a running mirror
-  sees nothing until the next change or the 10-second repaint.
-- **iTerm2 only, macOS only.** The attach mechanism is iTerm2's scripting API.
-- **iTerm2 must be running.** When it quits, the daemon exits on purpose so the
-  supervisor restarts it and reconnects.
-
-## Install
-
-```
-pip install git+https://github.com/yuri-rod/limpet
+```text
+protocol: 2
+sessions: demo
+grid: 80x24
+screen: synthetic terminal
+input: 'hello\n'
+ping: pong
 ```
 
-Not on PyPI yet, so install from the repository or from a release tarball.
+The [example](examples/local_demo.py) uses the same
+[WebSocket server](src/limpet/server.py) as the iTerm2 bridge and closes it on exit.
 
-Then write `~/.config/limpet/config.json`:
+## Connect to iTerm2
+
+The live bridge requires macOS, a running iTerm2 instance and access to its
+[Python scripting API](https://iterm2.com/python-api/tutorial/index.html).
+Install from the repository as above, then create
+`~/.config/limpet/config.json`:
 
 ```json
-{
-  "host": "100.64.0.2",
-  "port": 8737
-}
+{"host": "127.0.0.1", "port": 8737}
 ```
 
-`host` must be an address you actually want this reachable on — a Tailscale or
-VPN address, or `127.0.0.1`. Binding to `0.0.0.0` or `::` is refused outright;
-see [SECURITY.md](SECURITY.md) for why. `limpet --dev` forces loopback.
+Run `limpet --dev` to bind to loopback. On first run, Limpet creates a random
+256-bit token at `~/.config/limpet/token` with mode `0600`. Clients connect to
+`ws://127.0.0.1:8737` and send `Authorization: Bearer <token>` in the handshake.
+`LIMPET_CONFIG_DIR` changes the configuration and token directory.
 
+Anyone with the token can read terminal contents and send commands as your
+user. Use loopback or an encrypted private network. For a private network, set
+`host` to that interface's IP and run `limpet` without `--dev`. Unspecified IP
+addresses, including alternate spellings of `0.0.0.0` and `::`, are rejected.
+The transport is plain WebSocket. See [SECURITY.md](SECURITY.md) before making
+it reachable from another machine.
+
+## Client workflow
+
+Each WebSocket message is a JSON object. The server first sends `hello` with
+`proto: 2`; clients should check that version before proceeding. Once iTerm2 has
+been enumerated, `sessions` supplies session IDs, titles, jobs and paths.
+
+```json
+{"type":"subscribe","session":"SESSION_ID"}
+{"type":"input","session":"SESSION_ID","text":"hello\n"}
+{"type":"resize","session":"SESSION_ID","cols":80,"rows":24}
+{"type":"unsubscribe","session":"SESSION_ID"}
 ```
-limpet
-```
 
-A 64-hex-character token is generated at `~/.config/limpet/token` (mode `0600`)
-on first run. Clients send it as `Authorization: Bearer <token>`.
+Subscribe before sending input or resize requests. The server sends `grid` for
+terminal dimensions and `screen` with ANSI text and a `reset` flag. A new
+subscriber receives a snapshot; joining an existing mirror replays its latest
+frame. Multiple clients can subscribe to a session. The last unsubscribe or
+client disconnect stops that mirror and attempts to restore its original size.
 
-## Running it as a daemon
+`new_tab` creates a tab in the current iTerm2 window and replies with
+`tab_created`; `ping` replies with `pong`. `session_gone` reports an unavailable
+session. Invalid messages return `error`. Callback failures are logged; a failed
+new-tab request currently has no dedicated error reply.
+[protocol.py](src/limpet/protocol.py) defines message fields and validation.
 
-`templates/com.example.limpet.plist.template` is a launchd agent. Substitute
-`PYTHON` for your interpreter path and drop it in `~/Library/LaunchAgents/`.
+## Implementation and operating limits
 
-Its `KeepAlive` is deliberately `SuccessfulExit: false` rather than a bare
-`true`. limpet exits non-zero when the iTerm2 link dies, and that exit *is* the
-reconnect strategy — but a bare `true` also restarts a process that died on a
-bad config, in a tight loop, forever.
+- [frames.py](src/limpet/frames.py) groups styled cells and emits changed rows,
+  preserving double-width glyphs and combining characters. Terminal control
+  bytes in cell text become blanks.
+- [mirror.py](src/limpet/mirror.py) seeds quiet sessions with a snapshot and
+  refreshes idle mirrors every ten seconds. Keyboard input suppresses iTerm2
+  broadcast mode.
+- [iterm.py](src/limpet/iterm.py) tracks sessions, layout, focus and tab titles.
+  [main.py](src/limpet/main.py) checks the iTerm2 connection and exits on failure.
 
-## Protocol
+Only the visible grid is mirrored; scrollback and application transcripts are
+not transmitted. Resizing changes the source terminal for every viewer. Split
+panes and fullscreen windows may refuse resizing. Restoration needs a running
+bridge and iTerm2 connection; process crashes cannot restore geometry.
 
-Server frames: `hello`, `sessions`, `grid`, `screen`, `session_gone`,
-`tab_created`, `pong`.
-Client frames: `subscribe`, `unsubscribe`, `input`, `resize`, `new_tab`, `ping`.
+The optional [launchd template](templates/com.example.limpet.plist.template)
+restarts unsuccessful exits with a ten-second throttle. Replace `PYTHON` with
+the virtual environment's interpreter path before installing it. Test the
+configuration in the foreground first: invalid configuration also exits
+nonzero and will be retried by launchd.
 
-All JSON, one object per message. `protocol.py` is 70 lines and is the spec.
+## Development
 
-## Tests
-
-```
-pip install -e ".[dev]"
+```sh
 python -m pytest -q
+python -m pip install ruff==0.16.5
+ruff check src tests examples
+ruff format --check src tests examples
 ```
 
-## Not affiliated with iTerm2
+Tests use synthetic iTerm2 objects and temporary loopback WebSocket servers.
+They cover authentication, per-client subscriptions, malformed messages,
+rendering, resize restoration and mirror recovery. They do not exercise a live
+iTerm2 installation. CI runs Python 3.10 through 3.13 and checks the minimum
+supported WebSocket version on Python 3.10.
 
-limpet is an unaffiliated third-party tool. It talks to iTerm2 through the
-public scripting API and is not endorsed by, or connected to, the iTerm2
-project. "iTerm2" is used here only to say what limpet is compatible with.
+Bug reports should include a reproducible example without private terminal
+contents. Include a regression test when changing protocol or recovery behavior.
 
-## License
-
-MIT. See [LICENSE](LICENSE).
+Limpet is independent of the iTerm2 project. Licensed under [MIT](LICENSE).
