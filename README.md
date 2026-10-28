@@ -125,5 +125,20 @@ supported WebSocket version on Python 3.10.
 Bug reports should include a reproducible example without private terminal
 contents. Include a regression test when changing protocol or recovery behavior.
 
+## Releases
+
+GitHub releases provide versioned source independently of PyPI. To publish a
+package, first configure a PyPI trusted publisher for `yuri-rod/limpet`, workflow
+`publish.yml`, and environment `pypi`. Then manually run the publish workflow
+from `main`, selecting the existing release tag:
+
+```sh
+gh workflow run publish.yml --ref main -f release_tag=v0.1.1
+```
+
+This command uploads the selected version to PyPI. The workflow checks out the
+tag and rejects a tag that does not match the package version. A GitHub release
+alone does not upload a package.
+
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 Limpet is independent of the iTerm2 project. Licensed under [MIT](LICENSE).

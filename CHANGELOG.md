@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Separate GitHub releases from PyPI publication. The publish workflow now requires
+  a manual dispatch with an existing tag that matches the package version.
+
 ## 0.1.1
 
 - Require the sending client's subscription before forwarding input or resize
