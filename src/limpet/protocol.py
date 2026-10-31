@@ -33,6 +33,10 @@ def pong():
     return json.dumps({"type": "pong"})
 
 
+MAX_COLS = 500
+MAX_ROWS = 500
+MAX_INPUT_BYTES = 65536
+
 _CLIENT_FIELDS = {
     "subscribe": (("session", str),),
     "unsubscribe": (("session", str),),
@@ -62,4 +66,10 @@ def parse(text):
             raise ProtocolError(f"{msg['type']} needs {kind.__name__} {field}")
         if kind is int and value < 1:
             raise ProtocolError(f"{msg['type']} needs a positive {field}")
+        if kind is int and field == "cols" and value > MAX_COLS:
+            raise ProtocolError(f"cols exceeds maximum of {MAX_COLS}")
+        if kind is int and field == "rows" and value > MAX_ROWS:
+            raise ProtocolError(f"rows exceeds maximum of {MAX_ROWS}")
+        if field == "text" and len(value.encode("utf-8", "replace")) > MAX_INPUT_BYTES:
+            raise ProtocolError("input text exceeds maximum allowed size")
     return msg

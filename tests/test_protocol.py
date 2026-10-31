@@ -75,6 +75,9 @@ def test_parse_accepts_resize_and_new_tab():
         '{"type":"resize","session":"S1","cols":80}',
         '{"type":"resize","session":"S1","cols":0,"rows":24}',
         '{"type":"resize","session":"S1","cols":80,"rows":-1}',
+        '{"type":"resize","session":"S1","cols":501,"rows":24}',
+        '{"type":"resize","session":"S1","cols":80,"rows":501}',
+        '{"type":"input","session":"S1","text":"' + 'a' * 70000 + '"}',
     ],
 )
 def test_parse_rejects_garbage(bad):
