@@ -125,6 +125,14 @@ supported WebSocket version on Python 3.10.
 Bug reports should include a reproducible example without private terminal
 contents. Include a regression test when changing protocol or recovery behavior.
 
+## Technical roadmap
+
+Realistic planned engineering milestones:
+
+1. Tmux and POSIX PTY backend adapter (14 hours): Build an alternate session adapter for headless Linux and macOS machines that reads from tmux or raw PTY buffers without requiring the desktop iTerm2 GUI.
+2. Compressed ANSI streaming for high-latency networks (8 hours): Add optional deflate or zstandard compression headers to screen payload packets for mobile clients over cellular networks.
+3. Multi-session client multiplexing (6 hours): Support subscriptions to multiple concurrent terminal sessions over a single WebSocket connection without connection churn.
+
 ## Releases
 
 GitHub releases provide versioned source independently of PyPI. To publish a
